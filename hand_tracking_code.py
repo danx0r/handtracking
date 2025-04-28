@@ -6,6 +6,12 @@ import time
 import os
 import pygame
 
+def distance(a, b):
+    d = 0
+    for i in range(3):
+        d += (a[i] - b[i]) ** 2
+    return d ** 0.5
+
 def detect_hand_landmarks_from_image(rgb_image, save_visualization=False, output_path=None):
     """
     Detect 3D hand landmarks from a raw RGB image.
@@ -189,6 +195,8 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
                         print(f"Frame {frame_count} - Hand {i+1} landmarks:")
                         for j, (x, y, z) in enumerate(hand_landmarks):
                             print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
+                        print ("thumb-first:", distance(hand_landmarks[4], hand_landmarks[8]))
+                        print ("first-second:", distance(hand_landmarks[12], hand_landmarks[8]))
                         print()  # Empty line between hands
                 else:
                     print(f"Frame {frame_count}: No hands detected")
@@ -262,6 +270,8 @@ def main():
                 for j, (x, y, z) in enumerate(hand_landmarks):
                     print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
                 print()  # Empty line between hands
+                print ("thumb-first:", distance(hand_landmarks[4], hand_landmarks[8]))
+                print ("first-second:", distance(hand_landmarks[12], hand_landmarks[8]))
         
         elif args.camera:
             # Process camera feed
