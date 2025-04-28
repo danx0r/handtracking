@@ -3,6 +3,8 @@ import mediapipe as mp
 import numpy as np
 import argparse
 import time
+import os
+import pygame
 
 def detect_hand_landmarks_from_image(rgb_image, save_visualization=False, output_path=None):
     """
@@ -14,7 +16,8 @@ def detect_hand_landmarks_from_image(rgb_image, save_visualization=False, output
         output_path (str, optional): Path to save the visualization (if save_visualization is True)
         
     Returns:
-        list: List of detected landmarks in 3D space for each hand [[(x, y, z), ...], ...]
+        tuple: (list of detected landmarks in 3D space for each hand [[(x, y, z), ...], ...],
+               visualization image if save_visualization is True, otherwise None)
     """
     # Initialize MediaPipe Hand solution
     mp_hands = mp.solutions.hands
@@ -35,11 +38,8 @@ def detect_hand_landmarks_from_image(rgb_image, save_visualization=False, output
         # Initialize an empty list to store landmarks
         all_landmarks_3d = []
         
-        # Create a copy of the image for visualization if needed
-        vis_image = None
-        if save_visualization:
-            # Convert RGB to BGR for OpenCV visualization and saving
-            vis_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+        # Create a copy of the image for visualization
+        vis_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
         
         # Check if hand landmarks are detected
         if results.multi_hand_landmarks:
@@ -57,21 +57,29 @@ def detect_hand_landmarks_from_image(rgb_image, save_visualization=False, output
                 
                 all_landmarks_3d.append(landmarks_3d)
                 
-                # Draw the hand annotations on the image if visualization is requested
-                if save_visualization and vis_image is not None:
-                    mp_drawing.draw_landmarks(
-                        vis_image,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS,
-                        mp_drawing_styles.get_default_hand_landmarks_style(),
-                        mp_drawing_styles.get_default_hand_connections_style())
+                # Draw the hand annotations on the image
+                mp_drawing.draw_landmarks(
+                    vis_image,
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS,
+                    mp_drawing_styles.get_default_hand_landmarks_style(),
+                    mp_drawing_styles.get_default_hand_connections_style())
+        
+        # Add status text to the visualization
+        if all_landmarks_3d:
+            status_text = f"{len(all_landmarks_3d)} hand(s) detected"
+        else:
+            status_text = "No hands detected"
+        
+        cv2.putText(vis_image, status_text, (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
         # Save the annotated image if visualization is requested
-        if save_visualization and results.multi_hand_landmarks and vis_image is not None and output_path:
+        if save_visualization and output_path:
             cv2.imwrite(output_path, vis_image)
             print(f"Visualization saved to {output_path}")
         
-        return all_landmarks_3d
+        return all_landmarks_3d, vis_image
 
 def detect_hand_landmarks_from_file(image_path, save_visualization=False, output_path="hand_landmarks.jpg"):
     """
@@ -94,11 +102,13 @@ def detect_hand_landmarks_from_file(image_path, save_visualization=False, output
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     # Call the function that processes raw RGB image
-    return detect_hand_landmarks_from_image(rgb_image, save_visualization, output_path)
+    landmarks_3d, _ = detect_hand_landmarks_from_image(rgb_image, save_visualization, output_path)
+    return landmarks_3d
 
 def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, output_dir="."):
     """
     Periodically capture frames from a camera and detect hand landmarks.
+    Display results in a Pygame window.
     
     Args:
         period (float): Time interval between frame captures in seconds
@@ -114,104 +124,108 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
     if not cap.isOpened():
         raise ValueError(f"Could not open camera with ID {camera_id}")
     
+    # Get camera properties
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Initialize Pygame
+    pygame.init()
+    pygame.display.set_caption("Hand Tracking")
+    screen = pygame.display.set_mode((frame_width, frame_height))
+    clock = pygame.time.Clock()
+    font = pygame.font.Font(None, 36)
+    
+    # Create output directory if it doesn't exist
+    if save_visualization and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
     print(f"Camera initialized. Capturing frames every {period} seconds.")
-    print("Press 'q' to quit.")
+    print("Close the window or press 'q' to quit.")
     
     frame_count = 0
+    last_capture_time = 0
+    current_frame = None
+    last_processed_frame = None
+    running = True
     
     try:
-        while True:
-            # Capture frame
+        while running:
+            # Check for quit events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        running = False
+            
+            # Capture frame (continuously)
             ret, frame = cap.read()
             if not ret:
                 print("Failed to capture frame")
                 break
             
-            # Convert to RGB for processing
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Always store the most recent frame
+            current_frame = frame.copy()
             
-            # Generate output path for this frame if visualization is enabled
-            output_path = None
-            if save_visualization:
-                timestamp = time.strftime("%Y%m%d_%H%M%S")
-                output_path = f"{output_dir}/hand_landmarks_{timestamp}_{frame_count}.jpg"
-            
-            # Process the frame
-            landmarks_3d = detect_hand_landmarks_from_image(rgb_frame, save_visualization, output_path)
-            
-            # Display frame with landmarks (always show the frame even if save_visualization is False)
-            # We need to draw landmarks again since the original visualization might have been saved to a file
-            display_frame = frame.copy()
-            
-            # Initialize MediaPipe Hand solution for visualization
-            mp_hands = mp.solutions.hands
-            mp_drawing = mp.solutions.drawing_utils
-            mp_drawing_styles = mp.solutions.drawing_styles
-            
-            # Process the frame again to get landmarks for visualization
-            with mp_hands.Hands(
-                static_image_mode=True,
-                max_num_hands=2,
-                min_detection_confidence=0.5) as hands:
+            # Check if it's time to process a new frame
+            current_time = time.time()
+            if current_time - last_capture_time >= period:
+                # Convert to RGB for processing
+                rgb_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB)
                 
-                results = hands.process(rgb_frame)
+                # Generate output path for this frame if visualization is enabled
+                output_path = None
+                if save_visualization:
+                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                    output_path = f"{output_dir}/hand_landmarks_{timestamp}_{frame_count}.jpg"
                 
-                if results.multi_hand_landmarks:
-                    for hand_landmarks in results.multi_hand_landmarks:
-                        mp_drawing.draw_landmarks(
-                            display_frame,
-                            hand_landmarks,
-                            mp_hands.HAND_CONNECTIONS,
-                            mp_drawing_styles.get_default_hand_landmarks_style(),
-                            mp_drawing_styles.get_default_hand_connections_style())
+                # Process the frame
+                landmarks_3d, last_processed_frame = detect_hand_landmarks_from_image(
+                    rgb_frame, save_visualization, output_path)
+                
+                # Print landmark information
+                if landmarks_3d:
+                    for i, hand_landmarks in enumerate(landmarks_3d):
+                        print(f"Frame {frame_count} - Hand {i+1} landmarks:")
+                        for j, (x, y, z) in enumerate(hand_landmarks):
+                            print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
+                        print()  # Empty line between hands
+                else:
+                    print(f"Frame {frame_count}: No hands detected")
+                
+                # Update timing and frame count
+                last_capture_time = current_time
+                frame_count += 1
             
-            # Display the frame count and hand detection status
-            if landmarks_3d:
-                status_text = f"Frame {frame_count}: {len(landmarks_3d)} hand(s) detected"
-            else:
-                status_text = f"Frame {frame_count}: No hands detected"
+            # Display the frame
+            if last_processed_frame is not None:
+                # Convert OpenCV BGR image to Pygame RGB format
+                processed_frame_rgb = cv2.cvtColor(last_processed_frame, cv2.COLOR_BGR2RGB)
+                pygame_surface = pygame.surfarray.make_surface(processed_frame_rgb.swapaxes(0, 1))
+                screen.blit(pygame_surface, (0, 0))
+                
+                # Add additional text with Pygame
+                next_capture_text = f"Next capture in: {max(0, period - (time.time() - last_capture_time)):.1f}s"
+                text_surface = font.render(next_capture_text, True, (0, 255, 0))
+                screen.blit(text_surface, (10, 70))
+                
+                quit_text = "Press 'q' to quit"
+                text_surface = font.render(quit_text, True, (0, 255, 0))
+                screen.blit(text_surface, (10, frame_height - 40))
             
-            cv2.putText(display_frame, status_text, (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            # Update display
+            pygame.display.flip()
             
-            # Display instructions
-            cv2.putText(display_frame, "Press 'q' to quit", (10, 60), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            
-            # Show the frame
-            cv2.imshow('Hand Tracking', display_frame)
-            
-            # Print landmark information
-            if landmarks_3d:
-                for i, hand_landmarks in enumerate(landmarks_3d):
-                    print(f"Frame {frame_count} - Hand {i+1} landmarks:")
-                    for j, (x, y, z) in enumerate(hand_landmarks):
-                        print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
-                    print()  # Empty line between hands
-            else:
-                print(f"Frame {frame_count}: No hands detected")
-            
-            # Increment frame count
-            frame_count += 1
-            
-            # Wait for the specified period before capturing the next frame
-            # Also check for 'q' key press during the wait period
-            start_time = time.time()
-            while (time.time() - start_time) < period:
-                # Check for key press with a small timeout to keep it responsive
-                key = cv2.waitKey(100) & 0xFF
-                if key == ord('q'):
-                    raise KeyboardInterrupt  # Use KeyboardInterrupt to break out of the loops
-                # Sleep a bit to avoid hogging CPU
-                time.sleep(0.1)
+            # Control the frame rate (for UI responsiveness)
+            clock.tick(30)  # 30 FPS for the display
     
-    except KeyboardInterrupt:
-        print("Exiting...")
+    except Exception as e:
+        print(f"Error: {e}")
     
     finally:
-        # Release camera and close windows
+        # Clean up
         cap.release()
-        cv2.destroyAllWindows()
+        pygame.quit()
 
 def main():
     parser = argparse.ArgumentParser(description='Detect 3D hand landmarks from an image or camera feed')
