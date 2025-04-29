@@ -190,22 +190,24 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
                     rgb_frame, save_visualization, output_path)
                 
                 # Print landmark information
-                if landmarks_3d:
+                if len(landmarks_3d) == 2:
+                    if landmarks_3d[0][0][0] > landmarks_3d[1][0][0]:                   #swap so left hand is always arm1 (order is random)
+                        landmarks_3d.reverse()
                     for i, hand_landmarks in enumerate(landmarks_3d):
                         print(f"Frame {frame_count} - Hand {i+1} landmarks:")
                         # for j, (x, y, z) in enumerate(hand_landmarks):
                         #     print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
                         print()  # Empty line between hands
                         d = distance(hand_landmarks[4], hand_landmarks[8])
-                        # print ("DIST:", d)
-                        grip = max(0, int(d/5)-10)
+                        print ("DIST:", d)
+                        grip = max(0, 12-int(d/8))
                         arm = i+1
-                        # print ("ARM", arm, "GRIP", grip)
+                        print ("ARM", arm, "GRIP", grip)
                         cmd = f'curl "http://localhost:8745/v1/arm{arm}/joints/set?j7={grip}"'
                         print (cmd)
                         os.system(cmd)
                 else:
-                    print(f"Frame {frame_count}: No hands detected")
+                    print(f"Frame {frame_count}: did not see 2 hands")
                 
                 # Update timing and frame count
                 last_capture_time = current_time
