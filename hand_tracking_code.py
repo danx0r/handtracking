@@ -193,11 +193,17 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
                 if landmarks_3d:
                     for i, hand_landmarks in enumerate(landmarks_3d):
                         print(f"Frame {frame_count} - Hand {i+1} landmarks:")
-                        for j, (x, y, z) in enumerate(hand_landmarks):
-                            print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
-                        print ("thumb-first:", distance(hand_landmarks[4], hand_landmarks[8]))
-                        print ("first-second:", distance(hand_landmarks[12], hand_landmarks[8]))
+                        # for j, (x, y, z) in enumerate(hand_landmarks):
+                        #     print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
                         print()  # Empty line between hands
+                        d = distance(hand_landmarks[4], hand_landmarks[8])
+                        # print ("DIST:", d)
+                        grip = max(0, int(d/5)-10)
+                        arm = i+1
+                        # print ("ARM", arm, "GRIP", grip)
+                        cmd = f'curl "http://localhost:8745/v1/arm{arm}/joints/set?j7={grip}"'
+                        print (cmd)
+                        os.system(cmd)
                 else:
                     print(f"Frame {frame_count}: No hands detected")
                 
