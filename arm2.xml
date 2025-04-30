@@ -17,38 +17,38 @@
             <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/> -->
             <geom type="capsule" size="0.052" fromto="0 0 0.04 0 0 0.126" rgba="0.47 0.47 0.47 1"/>
             <geom type="capsule" size="0.022" fromto="0 0 0.1 0 0 0.26" contype="0" conaffinity="0" rgba="0.8 .8 .8 1"/>
-            <joint name="BASE_A" type="hinge" range="-165 165" axis="0 0 1"/>
+            <joint name="joint1" type="hinge" range="-165 165" axis="0 0 1"/>
             <body name="B" pos="0 -.05 .26">
                 <geom type="capsule" size="0.022" fromto="0 0 0 0 0 0.11" rgba="0.7 0.7 0.7 1"/>
                 <geom type="cylinder" size="0.0221" fromto="0 0 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
-                <joint name="A_B" type="hinge" range="-165 165" axis="0 1 0"/>
+                <joint name="joint2" type="hinge" range="-165 165" axis="0 1 0"/>
                 <body name="C" pos="0 0.04 0.11">
                     <geom type="capsule" size="0.022" fromto="0 0 0 0 0 0.1" rgba="0.7 0.7 0.7 1"/>
                     <geom type="cylinder" size="0.0221" fromto="0 0 0 0 -.04 0" rgba="0.7 0.7 0.7 1"/>
-                    <joint name="B_C" type="hinge" range="-165 165" axis="0 1 0"/>
+                    <joint name="joint3" type="hinge" range="-165 165" axis="0 1 0"/>
                     <body name="D" pos="0 -.04 0.1">
-                        <joint name="C_D" type="hinge" range="-165 165" axis="0 1 0"/>
+                        <joint name="joint4" type="hinge" range="-165 165" axis="0 1 0"/>
                         <geom type="capsule" size="0.022" fromto="0 0 0 0 0 0.07" rgba="0.7 0.7 0.7 1"/>
                         <geom type="cylinder" size="0.0221" fromto="0 0 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
                         <body name="E" pos="0 0 0.07" xyaxes="0 -1 0 1 0 0">
-                            <joint name="D_E" type="hinge" range="-165 165" axis="0 0 1"/>
+                            <joint name="joint5" type="hinge" range="-165 165" axis="0 0 1"/>
                             <geom type="cylinder" size="0.022" fromto="0 -.05 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
                             <body pos="0 0.026 0">
                                 <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 1"/>
                             </body>
                             <body name="F" pos="0 -.06 0">
                                 <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 1"/>
-                                <joint name="E_F" type="hinge" range="-180 180" axis="0 -1 0"/>
-                                <body name="G" pos="0.07 -.07 0">
+                                <joint name="joint6" type="hinge" range="-180 180" axis="0 -1 0"/>
+                                <body name="end_effector" pos="0.07 -.07 0">
                                     <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0 1 0 1"/>
-                                    <joint type="slide" name="F_G" range="-.07 0" axis="1 0 0"/>
+                                    <!-- <joint type="slide" name="F_G" range="-.07 0" axis="1 0 0"/> -->
                                     <body>
                                         <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.7 0 1"/>
                                     </body>
                                 </body>
                                 <body name="H" pos="-.07 -.07 0">
                                     <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0.5 0.5 0.5 1"/>
-                                    <joint type="slide" name="F_H" range="0 .07" axis="1 0 0"/>
+                                    <!-- <joint type="slide" name="F_H" range="0 .07" axis="1 0 0"/> -->
                                     <body>
                                         <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.3 0 1"/>
                                     </body>
@@ -61,13 +61,13 @@
         </body>
     </worldbody>
     <actuator>
-        <position name="BASE_A" inheritrange="1" kp="60" kv="12" joint="BASE_A"/>
-        <position name="A_B" inheritrange="1" kp="120" kv="24" joint="A_B"/>
-        <position name="B_C" inheritrange="1" kp="60" kv="12" joint="B_C"/>
-        <position name="C_D" inheritrange="1" kp="60" kv="12" joint="C_D"/>
-        <position name="D_E" inheritrange="1" kp="20" kv="4" joint="D_E"/>
-        <position name="E_F" inheritrange="1" kp="6" kv="1" joint="E_F"/>
-        <position name="F_G" inheritrange="1" kp="100" kv="20" joint="F_G"/>
-        <position name="F_H" inheritrange="1" kp="100" kv="20" joint="F_H"/>
+        <position name="BASE_A" inheritrange="1" kp="60" kv="12" joint="joint1"/>
+        <position name="A_B" inheritrange="1" kp="120" kv="24" joint="joint2"/>
+        <position name="B_C" inheritrange="1" kp="60" kv="12" joint="joint3"/>
+        <position name="C_D" inheritrange="1" kp="60" kv="12" joint="joint4"/>
+        <position name="D_E" inheritrange="1" kp="20" kv="4" joint="joint5"/>
+        <position name="E_F" inheritrange="1" kp="6" kv="1" joint="joint6"/>
+        <!-- <position name="F_G" inheritrange="1" kp="100" kv="20" joint="F_G"/>
+        <position name="F_H" inheritrange="1" kp="100" kv="20" joint="F_H"/> -->
     </actuator>
 </mujoco>
