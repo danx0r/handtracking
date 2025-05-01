@@ -34,23 +34,23 @@
                             <joint name="joint5" type="hinge" range="-165 165" axis="0 0 1"/>
                             <geom type="cylinder" size="0.022" fromto="0 -.05 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
                             <body pos="0 0.026 0">
-                                <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 1"/>
+                                <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 .31"/>
                             </body>
                             <body name="F" pos="0 -.06 0">
-                                <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 1"/>
+                                <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 .31"/>
                                 <joint name="joint6" type="hinge" range="-180 180" axis="0 -1 0"/>
                                 <body name="end_effector" pos="0.07 -.07 0">
-                                    <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0 1 0 1"/>
+                                    <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0 1 0 .31"/>
                                     <!-- <joint type="slide" name="F_G" range="-.07 0" axis="1 0 0"/> -->
                                     <body>
-                                        <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.7 0 1"/>
+                                        <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.7 0 .31"/>
                                     </body>
                                 </body>
                                 <body name="H" pos="-.07 -.07 0">
-                                    <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0.5 0.5 0.5 1"/>
+                                    <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0.5 0.5 0.5 .31"/>
                                     <!-- <joint type="slide" name="F_H" range="0 .07" axis="1 0 0"/> -->
                                     <body>
-                                        <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.3 0 1"/>
+                                        <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.3 0 .31"/>
                                     </body>
                                 </body>
                             </body>
