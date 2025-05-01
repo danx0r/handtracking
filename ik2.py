@@ -3,9 +3,8 @@ import argparse
 import numpy as np
 import mujoco
 from mujoco import viewer
-import math
 import time
-import os
+from scipy.spatial.transform import Rotation as R
 from math import radians, degrees
 import random
 
@@ -35,7 +34,7 @@ class RobotArmIK:
         # Store current target joint positions for smooth movement
         self.target_qpos = self.data.qpos.copy()
         
-    def solve_ik(self, target_pos, target_rot_matrix, max_iter=500, tol=1e-4, damping=0.1):
+    def solve_ik(self, target_pos, target_rot_matrix, max_iter=300, tol=1e-4, damping=0.1):
         """
         Solve inverse kinematics using damped least squares method
         
@@ -77,7 +76,8 @@ class RobotArmIK:
             orient_error = axis * angle
             
             # Check for convergence
-            error_norm = np.linalg.norm(pos_error) + np.linalg.norm(orient_error)
+            error_norm = np.linalg.norm(pos_error*2.5) + np.linalg.norm(orient_error)
+            # print ("ERR:", tol, error_norm)
             if error_norm < tol:
                 break
                 
@@ -201,7 +201,7 @@ class RobotArmIK:
 
 
 class WorkspaceVisualizer:
-    def __init__(self, robot_arm, interval=2.0, workspace_size=1.0, movement_speed=0.05):
+    def __init__(self, robot_arm, interval=2.0, workspace_size=1.0, movement_speed=0.05, max_iter=500):
         """
         Initialize the workspace visualizer
         
@@ -211,6 +211,7 @@ class WorkspaceVisualizer:
             workspace_size (float): Size of the cubic workspace (meters)
             movement_speed (float): Speed of arm movement (0-1, fraction of distance per step)
         """
+        self.max_iter = max_iter
         self.robot_arm = robot_arm
         self.interval = interval
         self.workspace_size = workspace_size
@@ -255,13 +256,17 @@ class WorkspaceVisualizer:
     
     def get_random_rotation(self):
         """Generate a random rotation matrix"""
-        # Random unit quaternion
-        q = np.random.randn(4)
-        q = q / np.linalg.norm(q)
+        # # Random unit quaternion
+        # q = np.random.randn(4)
+        # q = q / np.linalg.norm(q)
         
-        # Convert to rotation matrix
-        return self.quat2mat(q)
-    
+        # # Convert to rotation matrix
+        # return self.quat2mat(q)
+
+        r = R.from_euler('xyz', [random.randrange(-180, 179), random.randrange(-180, 179), random.randrange(-180, 179)], degrees=True)
+        random_rot = r.as_matrix()
+        return random_rot
+
     def quat2mat(self, quat):
         """Convert quaternion to rotation matrix"""
         w, x, y, z = quat
@@ -370,7 +375,7 @@ class WorkspaceVisualizer:
                     if current_time - last_update_time >= 0.05:  # Every 50ms
                         # Solve inverse kinematics
                         joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
-                            pos, rot_matrix)
+                            pos, rot_matrix, max_iter=self.max_iter)
                         
                         # Update the robot's target
                         self.robot_arm.target_qpos = joint_angles
@@ -383,10 +388,9 @@ class WorkspaceVisualizer:
                     # Original code - generate random positions
                     if not in_motion and (current_time - last_update_time >= self.interval):
                         # Generate random position and orientation
-                        # random_pos = self.get_random_position()
-                        # random_rot = self.get_random_rotation()
-                        random_pos = np.array([0, 0, .05])
-                        random_rot = np.array([[.71, 0, .71], [0, 1, 0], [0, 0, 1]])
+                        random_pos = self.get_random_position()
+                        random_rot = self.get_random_rotation()
+                        
                         current_target = random_pos
                         current_rot = random_rot
                         
@@ -399,7 +403,7 @@ class WorkspaceVisualizer:
                         
                         # Solve inverse kinematics
                         joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
-                            random_pos, random_rot)
+                            random_pos, random_rot, max_iter=self.max_iter)
                         
                         print(f"IK solution: Iterations = {iterations}")
                         print(f"Errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
@@ -492,7 +496,8 @@ def main():
         robot_arm, 
         interval=args.interval,
         workspace_size=args.workspace,
-        movement_speed=args.movement_speed
+        movement_speed=args.movement_speed,
+        max_iter=args.max_iterations
     )
     
     # Run interactive visualization
