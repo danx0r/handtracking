@@ -1,0 +1,9 @@
+<mujoco>
+<worldbody>
+  <body name="cursor" pos="0 0 0">
+    <geom name="x_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0.14 0 0" rgba="1 0 0 0.7"/>
+    <geom name="y_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0.12 0" rgba="0 1 0 0.7"/>
+    <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.08" rgba="0 0 1 0.7"/>
+  </body>
+</worldbody>
+</mujoco>
