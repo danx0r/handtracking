@@ -10,6 +10,7 @@ from math import radians, degrees
 import random
 
 class RobotArmIK:
+    # Keep your RobotArmIK class unchanged
     def __init__(self, mjcf_file):
         """
         Initialize the robot arm directly from a MuJoCo MJCF file
@@ -228,15 +229,25 @@ class WorkspaceVisualizer:
         # Create a MuJoCo viewer
         self.viewer = None
         
-        # Find the cursor body in the model
+        # Get the cursor body ID
         self.cursor_id = -1
         for i in range(self.model.nbody):
             if self.model.body(i).name == "cursor":
                 self.cursor_id = i
                 break
-        
+                
         if self.cursor_id == -1:
-            print("Warning: Cursor body not found in the model. Visualization may be limited.")
+            print("WARNING: No body named 'cursor' found in the model.")
+            return
+            
+        # Get the corresponding mocap ID
+        self.mocap_id = self.model.body_mocapid[self.cursor_id]
+        
+        if self.mocap_id == -1:
+            print("WARNING: The cursor is not a mocap body!")
+            return
+            
+        print(f"Found cursor body (ID: {self.cursor_id}) with mocap ID: {self.mocap_id}")
 
     def get_random_position(self):
         """Generate a random position within the workspace"""
@@ -262,15 +273,22 @@ class WorkspaceVisualizer:
     
     def update_cursor_position(self, pos, rot_matrix):
         """Update the cursor's position and orientation"""
-        if self.cursor_id == -1:
-            return  # Skip if cursor not found
+        if self.mocap_id == -1:
+            print("Cannot update cursor: not a mocap body")
+            return
         
         # Convert rotation matrix to quaternion
         quat = self.rotation_matrix_to_quat(rot_matrix)
         
-        # Update cursor body position and orientation
-        self.data.body(self.cursor_id).xpos = pos
-        self.data.body(self.cursor_id).xquat = quat
+        # Debug output
+        print(f"Setting cursor pos: {pos}, mocap_id: {self.mocap_id}")
+        
+        # Update mocap body position and orientation
+        self.data.mocap_pos[self.mocap_id] = pos
+        self.data.mocap_quat[self.mocap_id] = quat
+        
+        # Apply the changes
+        mujoco.mj_forward(self.model, self.data)
         
     def rotation_matrix_to_quat(self, R):
         """Convert rotation matrix to quaternion"""
@@ -303,6 +321,10 @@ class WorkspaceVisualizer:
     
     def run_interactive_visualization(self):
         """Run the interactive visualization loop"""
+        if self.mocap_id == -1:
+            print("WARNING: Cannot run interactive visualization - cursor is not a mocap body.")
+            return
+            
         # Initialize MuJoCo viewer for robot
         self.viewer = viewer.launch_passive(self.model, self.data)
         if not self.viewer:
@@ -314,65 +336,100 @@ class WorkspaceVisualizer:
         print("==========================")
         print(f"- Workspace: {self.workspace_size}m cube centered at origin")
         print(f"- Interval: {self.interval} seconds between position updates")
-        print("- Red capsule: X axis (0.1m length, 0.01m radius)")
-        print("- Green capsule: Y axis (0.1m length, 0.01m radius)")
-        print("- Blue capsule: Z axis (0.1m length, 0.01m radius)")
-        print("- Arm movement speed: gradual, linear joint interpolation")
         print("- Press Esc or close the window to exit\n")
-        
+                
         # Main loop
         last_update_time = 0
         in_motion = False
         current_target = None
         current_rot = None
         
+        # Use random positions instead of circular movement
+        circular_test = False
+        
         try:
             while self.viewer.is_running():
                 current_time = time.time()
                 
-                # Generate a new target when needed
-                if not in_motion and (current_time - last_update_time >= self.interval):
-                    # Generate random position and orientation
-                    random_pos = self.get_random_position()
-                    random_rot = self.get_random_rotation()
-                    current_target = random_pos
-                    current_rot = random_rot
+                if circular_test:
+                    # Move cursor in a circle, similar to the working example
+                    t = current_time * 0.5
+                    pos = np.zeros(3)
+                    pos[0] = np.sin(t) * 0.5
+                    pos[1] = np.cos(t) * 0.5
+                    pos[2] = 0.5 + 0.2 * np.sin(t * 2)
                     
-                    print(f"\nNew target: Position = {random_pos}, Rotation = {random_rot}")
+                    rot_matrix = np.eye(3)  # Identity rotation for simplicity
                     
-                    # Update cursor position and orientation
-                    self.update_cursor_position(random_pos, random_rot)
+                    self.data.mocap_pos[self.mocap_id] = pos
                     
-                    # Solve inverse kinematics
-                    joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
-                        random_pos, random_rot)
+                    # Apply the changes
+                    mujoco.mj_forward(self.model, self.data)
                     
-                    print(f"IK solution: Iterations = {iterations}")
-                    print(f"Errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
-                    
-                    last_update_time = current_time
-                    in_motion = True
-                
-                # Gradually move the robot arm if in motion
-                if in_motion:
-                    target_reached = self.robot_arm.move_towards_target(step_fraction=self.movement_speed)
-                    if target_reached:
-                        in_motion = False
+                    # Solve IK for the robot to follow it
+                    if current_time - last_update_time >= 0.05:  # Every 50ms
+                        # Solve inverse kinematics
+                        joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
+                            pos, rot_matrix)
                         
-                        # Calculate final error after moving
+                        # Update the robot's target
+                        self.robot_arm.target_qpos = joint_angles
+                        
+                        # Move the robot
+                        self.robot_arm.move_towards_target(step_fraction=self.movement_speed)
+                        
+                        last_update_time = current_time
+                else:
+                    # Original code - generate random positions
+                    if not in_motion and (current_time - last_update_time >= self.interval):
+                        # Generate random position and orientation
+                        random_pos = self.get_random_position()
+                        random_rot = self.get_random_rotation()
+                        current_target = random_pos
+                        current_rot = random_rot
+                        
+                        print(f"\nNew target: Position = {random_pos}, Rotation = {random_rot}")
+                        
+                        # Update cursor position and orientation - FIXED VERSION
+                        self.data.mocap_pos[self.mocap_id] = random_pos
+                        self.data.mocap_quat[self.mocap_id] = self.rotation_matrix_to_quat(random_rot)
                         mujoco.mj_forward(self.model, self.data)
-                        final_pos = self.data.body(self.robot_arm.end_effector_id).xpos
-                        final_rot = self.data.body(self.robot_arm.end_effector_id).xmat.reshape(3, 3)
                         
-                        pos_error = np.linalg.norm(current_target - final_pos)
-                        rel_rot = current_rot @ final_rot.T
-                        angle, _ = self.robot_arm._rotation_matrix_to_axis_angle(rel_rot)
-                        orient_error = degrees(angle)
+                        # Solve inverse kinematics
+                        joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
+                            random_pos, random_rot)
                         
-                        print(f"Target reached. Final errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
+                        print(f"IK solution: Iterations = {iterations}")
+                        print(f"Errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
+                        
+                        last_update_time = current_time
+                        in_motion = True
+                    
+                    # Gradually move the robot arm if in motion
+                    if in_motion:
+                        target_reached = self.robot_arm.move_towards_target(step_fraction=self.movement_speed)
+                        if target_reached:
+                            in_motion = False
+                            
+                            # Calculate final error after moving
+                            mujoco.mj_forward(self.model, self.data)
+                            final_pos = self.data.body(self.robot_arm.end_effector_id).xpos
+                            final_rot = self.data.body(self.robot_arm.end_effector_id).xmat.reshape(3, 3)
+                            
+                            pos_error = np.linalg.norm(current_target - final_pos)
+                            rel_rot = current_rot @ final_rot.T
+                            angle, _ = self.robot_arm._rotation_matrix_to_axis_angle(rel_rot)
+                            orient_error = degrees(angle)
+                            
+                            print(f"Target reached. Final errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
                 
                 # Update visualization
                 mujoco.mj_forward(self.model, self.data)
+                
+                # If not in circular test mode and we have a target, ensure cursor stays at target
+                if not circular_test and current_target is not None and current_rot is not None:
+                    self.data.mocap_pos[self.mocap_id] = current_target
+                    self.data.mocap_quat[self.mocap_id] = self.rotation_matrix_to_quat(current_rot)
                 
                 # Update the viewer
                 self.viewer.sync()
@@ -385,6 +442,7 @@ class WorkspaceVisualizer:
         finally:
             if self.viewer:
                 self.viewer.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description='Interactive IK Visualization for 6-DOF Robot Arm')
@@ -404,8 +462,28 @@ def main():
     
     args = parser.parse_args()
     
+    # Print model information before loading
+    print(f"Loading model: {args.mjcf_file}")
+    
     # Initialize robot arm
     robot_arm = RobotArmIK(args.mjcf_file)
+    
+    # Print model information after loading
+    print(f"Model loaded: {robot_arm.model.nbody} bodies, {robot_arm.model.njnt} joints, {robot_arm.model.nmocap} mocap bodies")
+    
+    # Check if the model has a cursor that's a mocap body
+    has_cursor_mocap = False
+    for i in range(robot_arm.model.nbody):
+        if robot_arm.model.body(i).name == "cursor":
+            mocap_id = robot_arm.model.body_mocapid[i]
+            if mocap_id != -1:
+                print(f"Found cursor mocap body: ID {i}, mocap_id {mocap_id}")
+                has_cursor_mocap = True
+            else:
+                print(f"Found cursor body (ID {i}) but it's NOT a mocap body!")
+    
+    if not has_cursor_mocap:
+        print("WARNING: No cursor mocap body found in the model!")
     
     # Initialize workspace visualizer
     visualizer = WorkspaceVisualizer(

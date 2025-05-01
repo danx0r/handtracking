@@ -8,9 +8,9 @@
     <worldbody>
         <light cutoff="100" ambient=".3 .3 .3" diffuse="1 1 1" specular=".8 .8 .8" directional="false" pos="5 -3 7" castshadow="false"/>
         <light cutoff="100" ambient=".2 .2 .2" diffuse=".6 .6 .6" specular=".7 .7 .7" directional="false" pos="-3 -7 4" castshadow="false"/>
-        <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
+        <!-- <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
         <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
-        <geom type="capsule" fromto="0 0 0  0 0 .95" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/>
+        <geom type="capsule" fromto="0 0 0  0 0 .95" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/> -->
 
         <body name="mocap_body" mocap="true" pos="0 0 0">
             <geom type="box" size=".02 .02 .02" contype="0" conaffinity="0" rgba="1 1 1 0.1"/>
