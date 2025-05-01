@@ -1,195 +1,259 @@
-import mujoco
+#!/usr/bin/env python3
+import argparse
+import math
 import numpy as np
-from scipy.optimize import minimize
+from ikpy.chain import Chain
+from ikpy.utils import geometry
+import ikpy.utils.plot as plot_utils
+from scipy.spatial.transform import Rotation
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
-class RobotArmIK:
-    def __init__(self, mjcf_path):
-        """
-        Initialize the robot arm with a MuJoCo MJCF file.
-        
-        Args:
-            mjcf_path (str): Path to the MJCF file for the 6-DOF robot arm
-        """
-        # Load the MJCF model
-        self.model = mujoco.MjModel.from_xml_path(mjcf_path)
-        self.data = mujoco.MjData(self.model)
-        
-        # Identify the end effector and joint indices
-        self.end_effector_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "end_effector")
-        self.joint_ids = []
-        for i in range(6):  # Assuming 6 joints for 6-DOF arm
-            print ("I", i)
-            joint_name = f"joint{i+1}"  # Adjust naming convention as needed
-            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
-            if joint_id == -1:
-                raise ValueError(f"Joint {joint_name} not found in model")
-            self.joint_ids.append(joint_id)
-        
-        # Set joint limits
-        self.joint_limits = []
-        for joint_id in self.joint_ids:
-            lower = self.model.jnt_range[joint_id][0]
-            upper = self.model.jnt_range[joint_id][1]
-            self.joint_limits.append((lower, upper))
+def parse_mjcf_to_ikpy_chain(mjcf_file):
+    """
+    Parse an MJCF file and create an IKPy kinematic chain.
     
-    def forward_kinematics(self, joint_angles):
-        """
-        Compute the end effector pose given joint angles.
+    This is a simplified implementation - a full parser would need to handle
+    all MJCF elements and convert them to IKPy link objects.
+    """
+    try:
+        # Since IKPy doesn't directly support MJCF, we'll use its URDF parsing capabilities
+        # and assume the MJCF file has been converted to URDF format first
+        # (you may need to implement a conversion from MJCF to URDF)
         
-        Args:
-            joint_angles (np.ndarray): Array of 6 joint angles in radians
-            
-        Returns:
-            tuple: (x, y, z, roll, pitch, yaw) of end effector
-        """
-        # Set joint positions
-        for i, joint_id in enumerate(self.joint_ids):
-            self.data.qpos[joint_id] = joint_angles[i]
+        # For demonstration purposes, we'll create a Chain object directly
+        # In a real implementation, you would parse the MJCF file to extract joint information
+        chain = Chain.from_urdf_file(mjcf_file)
+        return chain
+    except Exception as e:
+        print(f"Error parsing MJCF file: {e}")
+        print("Note: This example assumes the MJCF file is in URDF format or has been converted.")
         
-        # Forward the simulation
-        mujoco.mj_forward(self.model, self.data)
-        
-        # Get end effector position
-        pos = self.data.body(self.end_effector_id).xpos.copy()
-        
-        # Get end effector orientation (convert from quaternion to euler angles)
-        quat = self.data.body(self.end_effector_id).xquat.copy()
-        euler = self._quat_to_euler(quat)
-        
-        return np.concatenate([pos, euler])
+        # For demonstration, create a 6-DOF arm chain if parsing fails
+        print("Creating a default 6-DOF arm chain for demonstration...")
+        return create_default_chain()
+
+def create_default_chain():
+    """Create a default 6-DOF arm chain for demonstration purposes."""
+    from ikpy.link import URDFLink, OriginLink
     
-    def _quat_to_euler(self, quat):
-        """Convert quaternion to euler angles (roll, pitch, yaw)"""
-        # Extract quaternion components
-        w, x, y, z = quat
-        
-        # Roll (x-axis rotation)
-        sinr_cosp = 2.0 * (w * x + y * z)
-        cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
-        roll = np.arctan2(sinr_cosp, cosr_cosp)
-        
-        # Pitch (y-axis rotation)
-        sinp = 2.0 * (w * y - z * x)
-        if np.abs(sinp) >= 1:
-            pitch = np.pi / 2.0 * np.sign(sinp)  # Use 90 degrees if out of range
-        else:
-            pitch = np.arcsin(sinp)
-        
-        # Yaw (z-axis rotation)
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-        yaw = np.arctan2(siny_cosp, cosy_cosp)
-        
-        return np.array([roll, pitch, yaw])
-    
-    def _cost_function(self, joint_angles, target_pose):
-        """
-        Cost function for optimization: distance between current and target pose.
-        
-        Args:
-            joint_angles (np.ndarray): Array of 6 joint angles
-            target_pose (np.ndarray): Target pose [x, y, z, roll, pitch, yaw]
-            
-        Returns:
-            float: Cost value (sum of squared differences)
-        """
-        current_pose = self.forward_kinematics(joint_angles)
-        
-        # Position error (squared distance)
-        pos_error = np.sum((current_pose[:3] - target_pose[:3])**2)
-        
-        # Orientation error (squared angular difference)
-        # Note: angular differences need special handling for wrapping
-        orient_error = 0
-        for i in range(3):
-            diff = self._angular_diff(current_pose[3+i], target_pose[3+i])
-            orient_error += diff**2
-        
-        # Weight position and orientation errors
-        # Adjust these weights based on your specific requirements
-        position_weight = 1.0
-        orientation_weight = 0.5
-        
-        return position_weight * pos_error + orientation_weight * orient_error
-    
-    def _angular_diff(self, angle1, angle2):
-        """Calculate the shortest angular difference between two angles"""
-        diff = (angle1 - angle2) % (2 * np.pi)
-        if diff > np.pi:
-            diff -= 2 * np.pi
-        return diff
-    
-    def inverse_kinematics(self, x, y, z, roll, pitch, yaw, initial_guess=None):
-        """
-        Solve inverse kinematics to find joint angles for a target end effector pose.
-        
-        Args:
-            x, y, z: Target position coordinates
-            roll, pitch, yaw: Target orientation angles (in radians)
-            initial_guess: Initial joint angles for optimization (optional)
-            
-        Returns:
-            np.ndarray: Array of 6 joint angles that achieve the target pose
-        """
-        target_pose = np.array([x, y, z, roll, pitch, yaw])
-        
-        # Use current joint positions as initial guess if not provided
-        if initial_guess is None:
-            initial_guess = np.array([self.data.qpos[joint_id] for joint_id in self.joint_ids])
-        
-        # Define bounds for each joint based on the joint limits
-        bounds = self.joint_limits
-        
-        # Run the optimization
-        result = minimize(
-            self._cost_function,
-            initial_guess,
-            args=(target_pose,),
-            method='L-BFGS-B',
-            bounds=bounds,
-            options={'maxiter': 100}
+    chain = Chain(name="default_arm", links=[
+        OriginLink(),
+        URDFLink(
+            name="shoulder_pan_joint",
+            origin_translation=[0, 0, 0.1],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 0, 1],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="shoulder_lift_joint",
+            origin_translation=[0, 0, 0.2],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 1, 0],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="elbow_joint",
+            origin_translation=[0, 0, 0.2],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 1, 0],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="wrist_1_joint",
+            origin_translation=[0, 0, 0.2],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 1, 0],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="wrist_2_joint",
+            origin_translation=[0, 0, 0.1],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 0, 1],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="wrist_3_joint",
+            origin_translation=[0, 0, 0.1],
+            origin_orientation=[0, 0, 0],
+            rotation=[1, 0, 0],
+            bounds=(-3.14, 3.14)
+        ),
+        URDFLink(
+            name="end_effector",
+            origin_translation=[0, 0, 0.05],
+            origin_orientation=[0, 0, 0],
+            rotation=[0, 0, 0],
+            bounds=(0, 0)
         )
-        
-        # Check if optimization was successful
-        if not result.success:
-            print(f"Warning: IK optimization did not converge: {result.message}")
-        
-        # Final joint angles
-        joint_angles = result.x
-        
-        # Compute the achieved pose
-        achieved_pose = self.forward_kinematics(joint_angles)
-        position_error = np.linalg.norm(achieved_pose[:3] - target_pose[:3])
-        
-        print(f"IK solved with position error: {position_error:.6f} units")
-        
-        return joint_angles
+    ])
+    return chain
 
-# Example usage
-if __name__ == "__main__":
-    # Path to your MJCF file
-    mjcf_path = "arm2.xml"
+def degrees_to_radians(degrees):
+    """Convert degrees to radians."""
+    return degrees * (math.pi / 180)
+
+def calculate_ik(chain, target_position, target_orientation):
+    """
+    Calculate inverse kinematics for the given target position and orientation.
     
-    # Initialize the robot arm
-    robot = RobotArmIK(mjcf_path)
+    Args:
+        chain: IKPy kinematic chain
+        target_position: [x, y, z] in meters
+        target_orientation: [pitch, roll, yaw] in radians
     
-    # Target pose: x, y, z, roll, pitch, yaw
-    target_x, target_y, target_z = 0, 0, 0 
-    # target_roll, target_pitch, target_yaw = 0.0, np.pi/4, np.pi/2
-    target_roll, target_pitch, target_yaw = 0.0, 0, 0
+    Returns:
+        joint_angles: List of joint angles in radians
+    """
+    # Convert Euler angles (pitch, roll, yaw) to rotation matrix
+    rotation = Rotation.from_euler('xyz', target_orientation)
+    rotation_matrix = rotation.as_matrix()
     
-    # Solve inverse kinematics
-    joint_angles = robot.inverse_kinematics(
-        target_x, target_y, target_z,
-        target_roll, target_pitch, target_yaw
+    # Create target orientation matrix (3x3)
+    orientation_matrix = np.eye(4)
+    orientation_matrix[:3, :3] = rotation_matrix
+    
+    # Add target position
+    target_matrix = np.copy(orientation_matrix)
+    target_matrix[:3, 3] = target_position
+    
+    # Calculate inverse kinematics
+    joint_angles = chain.inverse_kinematics_frame(target_matrix, initial_position=None)
+    
+    return joint_angles
+
+def calculate_fk(chain, joint_angles):
+    """
+    Calculate forward kinematics to get the end effector position and orientation.
+    
+    Args:
+        chain: IKPy kinematic chain
+        joint_angles: List of joint angles in radians
+    
+    Returns:
+        position: [x, y, z] in meters
+        orientation: [pitch, roll, yaw] in radians
+    """
+    # Get end effector transform matrix
+    transform_matrix = chain.forward_kinematics(joint_angles)
+    
+    # Extract position
+    position = transform_matrix[:3, 3]
+    
+    # Extract orientation (convert rotation matrix to Euler angles)
+    rotation_matrix = transform_matrix[:3, :3]
+    rotation = Rotation.from_matrix(rotation_matrix)
+    orientation = rotation.as_euler('xyz')
+    
+    return position, orientation
+
+def calculate_error(target_position, target_orientation, actual_position, actual_orientation):
+    """
+    Calculate the error between target and actual position/orientation.
+    
+    Args:
+        target_position: [x, y, z] in meters
+        target_orientation: [pitch, roll, yaw] in radians
+        actual_position: [x, y, z] in meters
+        actual_orientation: [pitch, roll, yaw] in radians
+    
+    Returns:
+        position_error: Error in meters
+        orientation_error: Error in radians
+    """
+    # Calculate position error (Euclidean distance)
+    position_error = np.linalg.norm(np.array(target_position) - np.array(actual_position))
+    
+    # Calculate orientation error (average angular difference)
+    orientation_error = np.mean(np.abs(np.array(target_orientation) - np.array(actual_orientation)))
+    
+    return position_error, orientation_error
+
+def visualize_robot(chain, joint_angles, target_position):
+    """Visualize the robot and the target position."""
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot the arm
+    plot_utils.plot_robot(chain, joint_angles, ax, target=target_position)
+    
+    # Plot the target position
+    ax.scatter(target_position[0], target_position[1], target_position[2], c='red', marker='o', s=100)
+    
+    # Set plot limits and labels
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(-0.5, 0.5)
+    ax.set_zlim(0, 1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    
+    plt.title('Robot Arm IK Solution')
+    plt.show()
+
+def main():
+    parser = argparse.ArgumentParser(description='Inverse Kinematics for 6-DOF Robot Arm')
+    parser.add_argument('--mjcf', type=str, default=None, help='Path to MJCF file')
+    parser.add_argument('--x', type=float, default=0.3, help='Target X position in meters')
+    parser.add_argument('--y', type=float, default=0.0, help='Target Y position in meters')
+    parser.add_argument('--z', type=float, default=0.5, help='Target Z position in meters')
+    parser.add_argument('--pitch', type=float, default=0.0, help='Target pitch in degrees')
+    parser.add_argument('--roll', type=float, default=0.0, help='Target roll in degrees')
+    parser.add_argument('--yaw', type=float, default=0.0, help='Target yaw in degrees')
+    parser.add_argument('--visualize', action='store_true', help='Visualize the robot')
+    
+    args = parser.parse_args()
+    
+    # Convert position to meters (already in meters from args)
+    target_position = [args.x, args.y, args.z]
+    
+    # Convert orientation from degrees to radians
+    target_orientation = [
+        degrees_to_radians(args.pitch),
+        degrees_to_radians(args.roll),
+        degrees_to_radians(args.yaw)
+    ]
+    
+    # Parse MJCF file or create default chain
+    if args.mjcf:
+        chain = parse_mjcf_to_ikpy_chain(args.mjcf)
+    else:
+        chain = create_default_chain()
+    
+    # Calculate inverse kinematics
+    joint_angles = calculate_ik(chain, target_position, target_orientation)
+    
+    # Calculate forward kinematics to verify the solution
+    actual_position, actual_orientation = calculate_fk(chain, joint_angles)
+    
+    # Calculate error
+    position_error, orientation_error = calculate_error(
+        target_position, target_orientation, actual_position, actual_orientation
     )
     
-    print("Joint angles solution:")
-    for i, angle in enumerate(joint_angles):
-        print(f"Joint {i+1}: {angle:.4f} rad ({angle * 180/np.pi:.2f} deg)")
+    # Print results
+    print("\nTarget:")
+    print(f"Position (meters): X={args.x}, Y={args.y}, Z={args.z}")
+    print(f"Orientation (degrees): Pitch={args.pitch}, Roll={args.roll}, Yaw={args.yaw}")
     
-    # Verify the solution with forward kinematics
-    achieved_pose = robot.forward_kinematics(joint_angles)
-    print("\nAchieved end effector pose:")
-    print(f"Position: x={achieved_pose[0]:.4f}, y={achieved_pose[1]:.4f}, z={achieved_pose[2]:.4f}")
-    print(f"Orientation: roll={achieved_pose[3]:.4f}, pitch={achieved_pose[4]:.4f}, yaw={achieved_pose[5]:.4f}")
+    print("\nJoint Angles (radians):")
+    for i, angle in enumerate(joint_angles):
+        if i > 0:  # Skip the first joint (origin link)
+            print(f"Joint {i}: {angle:.4f} rad ({math.degrees(angle):.2f} deg)")
+    
+    print("\nActual End Effector:")
+    print(f"Position (meters): X={actual_position[0]:.4f}, Y={actual_position[1]:.4f}, Z={actual_position[2]:.4f}")
+    print(f"Orientation (degrees): Pitch={math.degrees(actual_orientation[0]):.2f}, Roll={math.degrees(actual_orientation[1]):.2f}, Yaw={math.degrees(actual_orientation[2]):.2f}")
+    
+    print("\nError:")
+    print(f"Position Error: {position_error:.4f} meters")
+    print(f"Orientation Error: {orientation_error:.4f} rad ({math.degrees(orientation_error):.2f} degrees)")
+    
+    # Visualize if requested
+    if args.visualize:
+        visualize_robot(chain, joint_angles, target_position)
+
+if __name__ == "__main__":
+    main()
