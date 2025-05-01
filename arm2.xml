@@ -22,7 +22,7 @@
             <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.08" rgba="0 0 1 0.7"/>
         </body>
 
-        <body name = "A" pos="0 0 -.5">
+        <body name = "A" pos="0 0 -.4">
             <!-- <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
             <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
             <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/> -->
