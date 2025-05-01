@@ -51,9 +51,9 @@
                                 <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 .31"/>
                                 <joint name="joint6" type="hinge" range="-180 180" axis="0 -1 0"/>
                                 <body name="end_effector" pos="0.07 -.07 0">
-                                <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 .21"/>
-                                <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 .21"/>
-                                <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 .21"/>
+                                <geom type="capsule" fromto="0 0 0  .31 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 .21"/>
+                                <geom type="capsule" fromto="0 0 0  0 .31 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 .21"/>
+                                <geom type="capsule" fromto="0 0 0  0 0 .31" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 .21"/>
                                     <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="0 1 0 .31"/>
                                     <!-- <joint type="slide" name="F_G" range="-.07 0" axis="1 0 0"/> -->
                                     <body>
