@@ -228,9 +228,15 @@ class WorkspaceVisualizer:
         # Create a MuJoCo viewer
         self.viewer = None
         
-        # Current cursor position and rotation
-        self.cursor_pos = np.zeros(3)
-        self.cursor_rot = np.eye(3)
+        # Find the cursor body in the model
+        self.cursor_id = -1
+        for i in range(self.model.nbody):
+            if self.model.body(i).name == "cursor":
+                self.cursor_id = i
+                break
+        
+        if self.cursor_id == -1:
+            print("Warning: Cursor body not found in the model. Visualization may be limited.")
 
     def get_random_position(self):
         """Generate a random position within the workspace"""
@@ -256,18 +262,15 @@ class WorkspaceVisualizer:
     
     def update_cursor_position(self, pos, rot_matrix):
         """Update the cursor's position and orientation"""
-        self.cursor_pos = pos
-        self.cursor_rot = rot_matrix
+        if self.cursor_id == -1:
+            return  # Skip if cursor not found
         
         # Convert rotation matrix to quaternion
         quat = self.rotation_matrix_to_quat(rot_matrix)
         
         # Update cursor body position and orientation
-        self.cursor_data.body("cursor").xpos = pos
-        self.cursor_data.body("cursor").xquat = quat
-        
-        # Forward the model to apply changes
-        mujoco.mj_forward(self.cursor_model, self.cursor_data)
+        self.data.body(self.cursor_id).xpos = pos
+        self.data.body(self.cursor_id).xquat = quat
         
     def rotation_matrix_to_quat(self, R):
         """Convert rotation matrix to quaternion"""
@@ -298,52 +301,13 @@ class WorkspaceVisualizer:
             qz = 0.25 * S
         return np.array([qw, qx, qy, qz])
     
-    def create_target_body(self):
-        """Create a physical target body in the main model"""
-        # Define XML for a target body
-        target_xml = """
-        <body name="target" pos="0 0 0">
-          <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" rgba="1 0 0 0.8"/>
-          <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" rgba="0 1 0 0.8"/>
-          <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" rgba="0 0 1 0.8"/>
-        </body>
-        """
-        # Load the model with the target
-        model_xml = """
-        <mujoco>
-          <worldbody>
-            <!-- Target body -->
-            <body name="target" pos="0 0 0">
-              <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" rgba="1 0 0 0.8"/>
-              <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" rgba="0 1 0 0.8"/>
-              <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" rgba="0 0 1 0.8"/>
-            </body>
-          </worldbody>
-        </mujoco>
-        """
-        with open("target_model.xml", "w") as f:
-            f.write(model_xml)
-            
-        # Load the target model
-        self.target_model = mujoco.MjModel.from_xml_path("target_model.xml")
-        self.target_data = mujoco.MjData(self.target_model)
-        
-        # Remove temporary file
-        os.remove("target_model.xml")
-    
     def run_interactive_visualization(self):
         """Run the interactive visualization loop"""
-        # Create target model
-        self.create_target_body()
-        
         # Initialize MuJoCo viewer for robot
         self.viewer = viewer.launch_passive(self.model, self.data)
         if not self.viewer:
             print("Failed to initialize MuJoCo viewer")
             return
-        
-        # Initialize renderer for target/cursor
-        self.target_renderer = mujoco.Renderer(self.target_model)
             
         # Print instructions
         print("\nInteractive Visualization:")
@@ -376,10 +340,8 @@ class WorkspaceVisualizer:
                     
                     print(f"\nNew target: Position = {random_pos}, Rotation = {random_rot}")
                     
-                    # Update target body position
-                    self.target_data.body("target").xpos = random_pos
-                    self.target_data.body("target").xquat = self.rotation_matrix_to_quat(random_rot)
-                    mujoco.mj_forward(self.target_model, self.target_data)
+                    # Update cursor position and orientation
+                    self.update_cursor_position(random_pos, random_rot)
                     
                     # Solve inverse kinematics
                     joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(

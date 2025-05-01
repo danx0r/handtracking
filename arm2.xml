@@ -11,6 +11,17 @@
         <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
         <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
         <geom type="capsule" fromto="0 0 0  0 0 .95" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/>
+
+        <body name="mocap_body" mocap="true" pos="0 0 0">
+            <geom type="box" size=".02 .02 .02" contype="0" conaffinity="0" rgba="1 1 1 0.1"/>
+        </body>
+
+        <body name="cursor" pos="0 0 0" mocap="true">
+            <geom name="x_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0.14 0 0" rgba="1 0 0 0.7"/>
+            <geom name="y_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0.12 0" rgba="0 1 0 0.7"/>
+            <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.08" rgba="0 0 1 0.7"/>
+        </body>
+
         <body name = "A">
             <!-- <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
             <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
@@ -59,15 +70,12 @@
                 </body>
             </body>
         </body>
-
-        <body name="cursor" pos="0 0 0">
-            <geom name="x_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0.14 0 0" rgba="1 0 0 0.7"/>
-            <geom name="y_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0.12 0" rgba="0 1 0 0.7"/>
-            <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.08" rgba="0 0 1 0.7"/>
-            <joint type="free"/>
-        </body>
-
     </worldbody>
+
+    <equality>
+        <weld body1="mocap_body" body2="cursor" solref="0.01 1" solimp="0.9 0.95 0.001"/>
+    </equality>
+
     <actuator>
         <position name="BASE_A" inheritrange="1" kp="60" kv="12" joint="joint1"/>
         <position name="A_B" inheritrange="1" kp="120" kv="24" joint="joint2"/>
