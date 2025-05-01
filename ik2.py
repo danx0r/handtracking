@@ -2,7 +2,7 @@
 import argparse
 import numpy as np
 import mujoco
-from mujoco import viewer as mjviewer
+from mujoco import viewer
 import math
 import time
 import os
@@ -31,6 +31,9 @@ class RobotArmIK:
         self.jacp = np.zeros((3, self.model.nv))
         self.jacr = np.zeros((3, self.model.nv))
         
+        # Store current target joint positions for smooth movement
+        self.target_qpos = self.data.qpos.copy()
+        
     def solve_ik(self, target_pos, target_rot_matrix, max_iter=500, tol=1e-4, damping=0.1):
         """
         Solve inverse kinematics using damped least squares method
@@ -45,18 +48,22 @@ class RobotArmIK:
         Returns:
             tuple: Joint angles in radians, position error in meters, orientation error in degrees, iterations
         """
+        # Make a copy of the current data to avoid modifying the actual robot state
+        temp_data = mujoco.MjData(self.model)
         # Start with current joint configuration
+        temp_data.qpos[:] = self.data.qpos[:]
+        
         iter_count = 0
         
         while iter_count < max_iter:
             # Forward kinematics
-            mujoco.mj_forward(self.model, self.data)
+            mujoco.mj_forward(self.model, temp_data)
             
             # Get current end effector position
-            current_pos = self.data.body(self.end_effector_id).xpos
+            current_pos = temp_data.body(self.end_effector_id).xpos
             
             # Get current end effector orientation as rotation matrix
-            current_rot = self.data.body(self.end_effector_id).xmat.reshape(3, 3)
+            current_rot = temp_data.body(self.end_effector_id).xmat.reshape(3, 3)
             
             # Calculate position error
             pos_error = target_pos - current_pos
@@ -74,7 +81,7 @@ class RobotArmIK:
                 break
                 
             # Get Jacobian at the end effector
-            mujoco.mj_jacBody(self.model, self.data, self.jacp, self.jacr, self.end_effector_id)
+            mujoco.mj_jacBody(self.model, temp_data, self.jacp, self.jacr, self.end_effector_id)
             
             # Combine position and orientation error
             error = np.concatenate([pos_error, orient_error])
@@ -88,20 +95,20 @@ class RobotArmIK:
             delta_q = np.linalg.solve(JTJ + damping_matrix, J.T @ error)
             
             # Update joint angles
-            self.data.qpos[:self.model.nv] += delta_q
+            temp_data.qpos[:self.model.nv] += delta_q
             
             # Check joint limits
             for i in range(min(self.model.nv, self.model.njnt)):
                 if i < len(self.model.jnt_limited) and self.model.jnt_limited[i]:
                     jnt_range = self.model.jnt_range[i]
-                    self.data.qpos[i] = np.clip(self.data.qpos[i], jnt_range[0], jnt_range[1])
+                    temp_data.qpos[i] = np.clip(temp_data.qpos[i], jnt_range[0], jnt_range[1])
             
             iter_count += 1
         
         # Calculate final errors
-        mujoco.mj_forward(self.model, self.data)
-        final_pos = self.data.body(self.end_effector_id).xpos
-        final_rot = self.data.body(self.end_effector_id).xmat.reshape(3, 3)
+        mujoco.mj_forward(self.model, temp_data)
+        final_pos = temp_data.body(self.end_effector_id).xpos
+        final_rot = temp_data.body(self.end_effector_id).xmat.reshape(3, 3)
         
         pos_error = np.linalg.norm(target_pos - final_pos)
         
@@ -109,10 +116,38 @@ class RobotArmIK:
         angle, _ = self._rotation_matrix_to_axis_angle(rel_rot)
         orient_error = degrees(angle)
         
+        # Store the target joint positions
+        self.target_qpos = temp_data.qpos.copy()
+        
         # Extract 6-DOF joint angles (assuming the first 6 are the ones we want)
-        joint_angles = self.data.qpos[:6].copy()
+        joint_angles = temp_data.qpos[:6].copy()
         
         return joint_angles, pos_error, orient_error, iter_count
+    
+    def move_towards_target(self, step_fraction=0.05):
+        """
+        Move the robot arm gradually towards the target position
+        
+        Args:
+            step_fraction (float): Fraction of the distance to move in this step (0-1)
+        
+        Returns:
+            bool: True if target reached, False otherwise
+        """
+        # Calculate difference between current and target positions
+        diff = self.target_qpos - self.data.qpos
+        
+        # Check if already at target (within a small tolerance)
+        if np.linalg.norm(diff) < 1e-4:
+            return True
+            
+        # Move a fraction of the way towards the target
+        self.data.qpos[:] = self.data.qpos + diff * step_fraction
+        
+        # Update the model with new positions
+        mujoco.mj_forward(self.model, self.data)
+        
+        return False
     
     def _rotation_matrix_to_axis_angle(self, R):
         """
@@ -165,7 +200,7 @@ class RobotArmIK:
 
 
 class WorkspaceVisualizer:
-    def __init__(self, robot_arm, interval=2.0, workspace_size=1.0):
+    def __init__(self, robot_arm, interval=2.0, workspace_size=1.0, movement_speed=0.05):
         """
         Initialize the workspace visualizer
         
@@ -173,10 +208,12 @@ class WorkspaceVisualizer:
             robot_arm (RobotArmIK): Robot arm instance
             interval (float): Time interval between cursor position updates (seconds)
             workspace_size (float): Size of the cubic workspace (meters)
+            movement_speed (float): Speed of arm movement (0-1, fraction of distance per step)
         """
         self.robot_arm = robot_arm
         self.interval = interval
         self.workspace_size = workspace_size
+        self.movement_speed = movement_speed
         
         # Get the base model and data
         self.model = robot_arm.model
@@ -191,47 +228,42 @@ class WorkspaceVisualizer:
         # Create a MuJoCo viewer
         self.viewer = None
         
-        # Create the 3D cursor model
+        # Current cursor position and rotation
+        self.cursor_pos = np.zeros(3)
+        self.cursor_rot = np.eye(3)
+        
+        # Create a separate model for the cursor
         self.create_cursor_model()
         
     def create_cursor_model(self):
-        """Create MuJoCo model with 3D cursor made of intersecting capsules"""
-        # Define the XML for a 3D cursor model
+        """Create a simple model with the 3D cursor"""
         cursor_xml = f"""
         <mujoco>
-            <worldbody>
-                <!-- X axis (red) -->
-                <body name="x_capsule" pos="0 0 0">
-                    <geom type="capsule" size="0.003 0.01" rgba="1 0 0 0.8" pos="0 0 0" quat="0.7071 0 0 0.7071"/>
-                </body>
-                <!-- Y axis (green) -->
-                <body name="y_capsule" pos="0 0 0">
-                    <geom type="capsule" size="0.003 0.01" rgba="0 1 0 0.8" pos="0 0 0" quat="0.7071 0 0.7071 0"/>
-                </body>
-                <!-- Z axis (blue) -->
-                <body name="z_capsule" pos="0 0 0">
-                    <geom type="capsule" size="0.003 0.01" rgba="0 0 1 0.8" pos="0 0 0.01" quat="1 0 0 0"/>
-                </body>
-            </worldbody>
+          <asset>
+            <material name="red" rgba="1 0 0 0.8"/>
+            <material name="green" rgba="0 1 0 0.8"/>
+            <material name="blue" rgba="0 0 1 0.8"/>
+          </asset>
+          <worldbody>
+            <body name="cursor" pos="0 0 0">
+              <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" material="red"/>
+              <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" material="green"/>
+              <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" material="blue"/>
+            </body>
+          </worldbody>
         </mujoco>
         """
-        # Create temporary file for the XML
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.xml', delete=False) as temp_file:
-            temp_filename = temp_file.name
-            temp_file.write(cursor_xml.encode('utf-8'))
         
-        # Load cursor model
-        self.cursor_model = mujoco.MjModel.from_xml_path(temp_filename)
+        # Create a temporary file for the cursor model
+        with open("cursor_model.xml", "w") as f:
+            f.write(cursor_xml)
+        
+        # Load the cursor model
+        self.cursor_model = mujoco.MjModel.from_xml_path("cursor_model.xml")
         self.cursor_data = mujoco.MjData(self.cursor_model)
         
-        # Remove temporary file
-        os.unlink(temp_filename)
-        
-        # Get body IDs for cursor components
-        self.x_capsule_id = mujoco.mj_name2id(self.cursor_model, mujoco.mjtObj.mjOBJ_BODY, "x_capsule")
-        self.y_capsule_id = mujoco.mj_name2id(self.cursor_model, mujoco.mjtObj.mjOBJ_BODY, "y_capsule")
-        self.z_capsule_id = mujoco.mj_name2id(self.cursor_model, mujoco.mjtObj.mjOBJ_BODY, "z_capsule")
+        # Remove the temporary file
+        os.remove("cursor_model.xml")
         
     def get_random_position(self):
         """Generate a random position within the workspace"""
@@ -257,18 +289,18 @@ class WorkspaceVisualizer:
     
     def update_cursor_position(self, pos, rot_matrix):
         """Update the cursor's position and orientation"""
+        self.cursor_pos = pos
+        self.cursor_rot = rot_matrix
+        
         # Convert rotation matrix to quaternion
         quat = self.rotation_matrix_to_quat(rot_matrix)
         
-        # Set position for all capsules
-        self.cursor_data.body(self.x_capsule_id).xpos = pos
-        self.cursor_data.body(self.y_capsule_id).xpos = pos
-        self.cursor_data.body(self.z_capsule_id).xpos = pos
+        # Update cursor body position and orientation
+        self.cursor_data.body("cursor").xpos = pos
+        self.cursor_data.body("cursor").xquat = quat
         
-        # Set orientation for all capsules
-        self.cursor_data.body(self.x_capsule_id).xquat = quat
-        self.cursor_data.body(self.y_capsule_id).xquat = quat
-        self.cursor_data.body(self.z_capsule_id).xquat = quat
+        # Forward the model to apply changes
+        mujoco.mj_forward(self.cursor_model, self.cursor_data)
         
     def rotation_matrix_to_quat(self, R):
         """Convert rotation matrix to quaternion"""
@@ -299,38 +331,94 @@ class WorkspaceVisualizer:
             qz = 0.25 * S
         return np.array([qw, qx, qy, qz])
     
+    def render_cursor(self, renderer):
+        """Render the cursor using a separate renderer"""
+        renderer.update_scene(self.cursor_data)
+        cursor_img = renderer.render()
+        return cursor_img
+    
+    def create_target_body(self):
+        """Create a physical target body in the main model"""
+        # Define XML for a target body
+        target_xml = """
+        <body name="target" pos="0 0 0">
+          <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" rgba="1 0 0 0.8"/>
+          <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" rgba="0 1 0 0.8"/>
+          <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" rgba="0 0 1 0.8"/>
+        </body>
+        """
+        # Load the model with the target
+        model_xml = """
+        <mujoco>
+          <worldbody>
+            <!-- Target body -->
+            <body name="target" pos="0 0 0">
+              <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" rgba="1 0 0 0.8"/>
+              <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" rgba="0 1 0 0.8"/>
+              <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" rgba="0 0 1 0.8"/>
+            </body>
+          </worldbody>
+        </mujoco>
+        """
+        with open("target_model.xml", "w") as f:
+            f.write(model_xml)
+            
+        # Load the target model
+        self.target_model = mujoco.MjModel.from_xml_path("target_model.xml")
+        self.target_data = mujoco.MjData(self.target_model)
+        
+        # Remove temporary file
+        os.remove("target_model.xml")
+    
     def run_interactive_visualization(self):
         """Run the interactive visualization loop"""
-        # Initialize MuJoCo viewer
-        self.viewer = mjviewer.launch_passive(self.model, self.data)
+        # Create target model
+        self.create_target_body()
+        
+        # Initialize MuJoCo viewer for robot
+        self.viewer = viewer.launch_passive(self.model, self.data)
         if not self.viewer:
             print("Failed to initialize MuJoCo viewer")
             return
+        
+        # Initialize renderer for target/cursor
+        self.target_renderer = mujoco.Renderer(self.target_model)
             
         # Print instructions
         print("\nInteractive Visualization:")
         print("==========================")
         print(f"- Workspace: {self.workspace_size}m cube centered at origin")
         print(f"- Interval: {self.interval} seconds between position updates")
-        print("- Red capsule: X axis")
-        print("- Green capsule: Y axis")
-        print("- Blue capsule: Z axis")
+        print("- Red capsule: X axis (0.1m length, 0.01m radius)")
+        print("- Green capsule: Y axis (0.1m length, 0.01m radius)")
+        print("- Blue capsule: Z axis (0.1m length, 0.01m radius)")
+        print("- Arm movement speed: gradual, linear joint interpolation")
         print("- Press Esc or close the window to exit\n")
         
         # Main loop
         last_update_time = 0
+        in_motion = False
+        current_target = None
+        current_rot = None
         
         try:
             while self.viewer.is_running():
                 current_time = time.time()
                 
-                # Update cursor position at the specified interval
-                if current_time - last_update_time >= self.interval:
+                # Generate a new target when needed
+                if not in_motion and (current_time - last_update_time >= self.interval):
                     # Generate random position and orientation
                     random_pos = self.get_random_position()
                     random_rot = self.get_random_rotation()
+                    current_target = random_pos
+                    current_rot = random_rot
                     
                     print(f"\nNew target: Position = {random_pos}, Rotation = {random_rot}")
+                    
+                    # Update target body position
+                    self.target_data.body("target").xpos = random_pos
+                    self.target_data.body("target").xquat = self.rotation_matrix_to_quat(random_rot)
+                    mujoco.mj_forward(self.target_model, self.target_data)
                     
                     # Solve inverse kinematics
                     joint_angles, pos_error, orient_error, iterations = self.robot_arm.solve_ik(
@@ -340,11 +428,33 @@ class WorkspaceVisualizer:
                     print(f"Errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
                     
                     last_update_time = current_time
-                    
-                # Update robot visualization
+                    in_motion = True
+                
+                # Gradually move the robot arm if in motion
+                if in_motion:
+                    target_reached = self.robot_arm.move_towards_target(step_fraction=self.movement_speed)
+                    if target_reached:
+                        in_motion = False
+                        
+                        # Calculate final error after moving
+                        mujoco.mj_forward(self.model, self.data)
+                        final_pos = self.data.body(self.robot_arm.end_effector_id).xpos
+                        final_rot = self.data.body(self.robot_arm.end_effector_id).xmat.reshape(3, 3)
+                        
+                        pos_error = np.linalg.norm(current_target - final_pos)
+                        rel_rot = current_rot @ final_rot.T
+                        angle, _ = self.robot_arm._rotation_matrix_to_axis_angle(rel_rot)
+                        orient_error = degrees(angle)
+                        
+                        print(f"Target reached. Final errors: Position = {pos_error:.6f}m, Orientation = {orient_error:.6f}°")
+                
+                # Update visualization
                 mujoco.mj_forward(self.model, self.data)
                 
-                # Update viewer
+                # Render target in a separate window
+                target_img = self.render_cursor(self.target_renderer)
+                
+                # Update the viewer
                 self.viewer.sync()
                 
                 # Sleep to reduce CPU usage
@@ -370,6 +480,8 @@ def main():
                         help='Convergence tolerance for IK solver')
     parser.add_argument('--damping', '-d', type=float, default=0.1,
                         help='Damping factor for IK solver')
+    parser.add_argument('--movement-speed', '-s', type=float, default=0.05,
+                        help='Movement speed (0-1, fraction of distance per step)')
     
     args = parser.parse_args()
     
@@ -380,7 +492,8 @@ def main():
     visualizer = WorkspaceVisualizer(
         robot_arm, 
         interval=args.interval,
-        workspace_size=args.workspace
+        workspace_size=args.workspace,
+        movement_speed=args.movement_speed
     )
     
     # Run interactive visualization
