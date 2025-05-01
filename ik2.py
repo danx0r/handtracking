@@ -383,8 +383,10 @@ class WorkspaceVisualizer:
                     # Original code - generate random positions
                     if not in_motion and (current_time - last_update_time >= self.interval):
                         # Generate random position and orientation
-                        random_pos = self.get_random_position()
-                        random_rot = self.get_random_rotation()
+                        # random_pos = self.get_random_position()
+                        # random_rot = self.get_random_rotation()
+                        random_pos = np.array([0.3, 0, 0])
+                        random_rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
                         current_target = random_pos
                         current_rot = random_rot
                         
