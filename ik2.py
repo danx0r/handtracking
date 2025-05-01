@@ -23,7 +23,7 @@ class RobotArmIK:
         
         # Find the end effector body (we'll assume it's the last body in the chain)
         # In a real application, you'd want to identify it by name
-        self.end_effector_id = self.model.nbody - 1
+        self.end_effector_id = self.model.nbody - 2
         
         # Pre-allocate Jacobian matrices
         # jacp is the translational Jacobian (position)
@@ -231,40 +231,7 @@ class WorkspaceVisualizer:
         # Current cursor position and rotation
         self.cursor_pos = np.zeros(3)
         self.cursor_rot = np.eye(3)
-        
-        # Create a separate model for the cursor
-        self.create_cursor_model()
-        
-    def create_cursor_model(self):
-        """Create a simple model with the 3D cursor"""
-        cursor_xml = f"""
-        <mujoco>
-          <asset>
-            <material name="red" rgba="1 0 0 0.8"/>
-            <material name="green" rgba="0 1 0 0.8"/>
-            <material name="blue" rgba="0 0 1 0.8"/>
-          </asset>
-          <worldbody>
-            <body name="cursor" pos="0 0 0">
-              <geom name="x_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0 0.7071" material="red"/>
-              <geom name="y_axis" type="capsule" size="0.01 0.05" pos="0 0 0" quat="0.7071 0 0.7071 0" material="green"/>
-              <geom name="z_axis" type="capsule" size="0.01 0.05" pos="0 0 0.05" quat="1 0 0 0" material="blue"/>
-            </body>
-          </worldbody>
-        </mujoco>
-        """
-        
-        # Create a temporary file for the cursor model
-        with open("cursor_model.xml", "w") as f:
-            f.write(cursor_xml)
-        
-        # Load the cursor model
-        self.cursor_model = mujoco.MjModel.from_xml_path("cursor_model.xml")
-        self.cursor_data = mujoco.MjData(self.cursor_model)
-        
-        # Remove the temporary file
-        os.remove("cursor_model.xml")
-        
+
     def get_random_position(self):
         """Generate a random position within the workspace"""
         return np.random.uniform(self.ws_min, self.ws_max)
@@ -330,12 +297,6 @@ class WorkspaceVisualizer:
             qy = (R[1, 2] + R[2, 1]) / S
             qz = 0.25 * S
         return np.array([qw, qx, qy, qz])
-    
-    def render_cursor(self, renderer):
-        """Render the cursor using a separate renderer"""
-        renderer.update_scene(self.cursor_data)
-        cursor_img = renderer.render()
-        return cursor_img
     
     def create_target_body(self):
         """Create a physical target body in the main model"""
@@ -451,9 +412,6 @@ class WorkspaceVisualizer:
                 # Update visualization
                 mujoco.mj_forward(self.model, self.data)
                 
-                # Render target in a separate window
-                target_img = self.render_cursor(self.target_renderer)
-                
                 # Update the viewer
                 self.viewer.sync()
                 
@@ -465,7 +423,6 @@ class WorkspaceVisualizer:
         finally:
             if self.viewer:
                 self.viewer.close()
-
 
 def main():
     parser = argparse.ArgumentParser(description='Interactive IK Visualization for 6-DOF Robot Arm')
