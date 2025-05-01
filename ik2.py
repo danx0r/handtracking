@@ -385,8 +385,8 @@ class WorkspaceVisualizer:
                         # Generate random position and orientation
                         # random_pos = self.get_random_position()
                         # random_rot = self.get_random_rotation()
-                        random_pos = np.array([0.05, 0, 0])
-                        random_rot = np.array([[1, 0, 0.5], [0, 1, 0], [0, 0, 1]])
+                        random_pos = np.array([0, 0, 0])
+                        random_rot = np.array([[1, 0.4, 0], [0, 1, 0], [0, 0, 1]])
                         current_target = random_pos
                         current_rot = random_rot
                         
