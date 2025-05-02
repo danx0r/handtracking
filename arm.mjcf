@@ -23,10 +23,12 @@
             <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.2" contype="0" conaffinity="0" rgba="0 0 1 0.7"/>
         </body>
 
-        <body name = "A" pos="0 0 -.4">
-            <!-- <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
+        <body>
+            <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
             <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
-            <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/> -->
+            <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/>
+        </body>
+        <body name = "A" pos="0 0 -.4">
             <geom type="capsule" size="0.052" fromto="0 0 0.04 0 0 0.126" rgba="0.47 0.47 0.47 1"/>
             <geom type="capsule" size="0.022" fromto="0 0 0.1 0 0 0.26" contype="0" conaffinity="0" rgba="0.8 .8 .8 1"/>
             <joint name="joint1" type="hinge" range="-165 165" axis="0 0 1"/>
@@ -49,7 +51,7 @@
                                 <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 .31"/>
                             </body>
                             <body name="F" pos="0 -.06 0">
-                                <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 .31"/>
+                                <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 1"/>
                                 <joint name="joint6" type="hinge" range="-180 180" axis="0 -1 0"/>
                                 <body name="end_effector" pos="0.07 -.07 0">
                                     <geom type="capsule" fromto="0 0 0  .05 0 0" size="0.0035" contype="0" conaffinity="0" mass="1" rgba="1 0 0 .41"/>
