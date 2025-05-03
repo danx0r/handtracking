@@ -23,12 +23,12 @@
             <geom name="z_axis" type="capsule" size="0.01 0.25" fromto="0 0 0  0 0 0.2" contype="0" conaffinity="0" rgba="0 0 1 0.7"/>
         </body> -->
 
-        <!-- <body>
-            <geom type="capsule" fromto="0 0 0  1 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
-            <geom type="capsule" fromto="0 0 0  0 1 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
-            <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/>
-        </body> -->
-        <body name = "A" pos="0 0 0" xyaxes="0 0 -1 0 1 0">
+        <body>
+            <geom type="capsule" fromto="0 0 0  .5 0 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="1 0 0 1"/>
+            <geom type="capsule" fromto="0 0 0  0 .5 0" size="0.005" contype="0" conaffinity="0" mass="1" rgba="0 1 0 1"/>
+            <!-- <geom type="capsule" fromto="0 0 0  0 0 1" size="0.005" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 1"/> -->
+        </body>
+        <body name = "A" pos="0 0 0">
             <geom type="capsule" size="0.052" fromto="0 0 0.04 0 0 0.126" rgba="0.47 0.47 0.47 1"/>
             <geom type="capsule" size="0.022" fromto="0 0 0.1 0 0 0.26" contype="0" conaffinity="0" rgba="0.8 .8 .8 1"/>
             <joint name="joint1" type="hinge" range="-165 165" axis="0 0 1"/>
@@ -46,7 +46,7 @@
                         <geom type="cylinder" size="0.0221" fromto="0 0 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
                         <body name="E" pos="0 0 0.07" xyaxes="1 0 0 0 1 0">
                             <joint name="joint5" type="hinge" range="-165 165" axis="0 0 1"/>
-                            <geom type="cylinder" size="0.022" fromto="0 -.05 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
+                            <geom type="cylinder" size="0.022" fromto="0 -.05 0 0 0 0" rgba="0.7 0.7 0.7 1"/>
                             <!-- <body pos="0 0.026 0">
                                 <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 .31"/>
                             </body> -->
@@ -57,9 +57,9 @@
                                     <geom type="capsule" fromto="0 0 0  .05 0 0" size="0.0035" contype="0" conaffinity="0" mass="1" rgba="1 0 0 .41"/>
                                     <geom type="capsule" fromto="0 0 0  0 .03 0" size="0.0035" contype="0" conaffinity="0" mass="1" rgba="0 1 0 .41"/>
                                     <!-- <geom type="capsule" fromto="0 0 0  0 0 .04" size="0.0035" contype="0" conaffinity="0" mass="1" rgba=".4 .6 1 .41"/> -->
-                                    <geom type="capsule" size="0.012" fromto="0 -.01 0 0 0.05 0" rgba="1 .8 0 .66"/>
+                                    <geom type="capsule" size="0.012" fromto=".01 0 0 0.05 0 0" rgba="1 .8 0 .66"/>
                                     <!-- <joint type="slide" name="F_G" range="-.07 0" axis="1 0 0"/> -->
-                                    <!-- <body>
+`                                    <!-- <body>
                                         <geom type="box" size="0.015 0.03 0.03" rgba="0.7 0.7 0 .31"/>
                                     </body> -->
                                 </body>
