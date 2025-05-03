@@ -47,9 +47,9 @@
                         <body name="E" pos="0 0 0.07" xyaxes="1 0 0 0 1 0">
                             <joint name="joint5" type="hinge" range="-165 165" axis="0 0 1"/>
                             <geom type="cylinder" size="0.022" fromto="0 -.05 0 0 0.04 0" rgba="0.7 0.7 0.7 1"/>
-                            <body pos="0 0.026 0">
+                            <!-- <body pos="0 0.026 0">
                                 <geom type="box" size="0.0133 0.015 0.0133" rgba="0 0.6 0 .31"/>
-                            </body>
+                            </body> -->
                             <body name="F" pos="0 -.06 0">
                                 <!-- <geom type="capsule" size="0.017" fromto="-.05 0 0 0.05 0 0" rgba="0.7 0.7 0.7 1"/> -->
                                 <joint name="joint6" type="hinge" range="-180 180" axis="0 -1 0"/>
