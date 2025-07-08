@@ -14,6 +14,259 @@ def distance(a, b):
         d += (a[i] - b[i]) ** 2
     return d ** 0.5
 
+def calculate_hand_segment_length_sum(hand_landmarks):
+    """Calculate the sum of 3D distances between all connected landmarks (20 segments total)."""
+    # Hand connections (MediaPipe hand connections)
+    hand_connections = [
+        # Wrist to fingers
+        (0, 1), (0, 5), (0, 9), (0, 13), (0, 17),
+        # Thumb
+        (1, 2), (2, 3), (3, 4),
+        # Index finger
+        (5, 6), (6, 7), (7, 8),
+        # Middle finger
+        (9, 10), (10, 11), (11, 12),
+        # Ring finger
+        (13, 14), (14, 15), (15, 16),
+        # Pinky
+        (17, 18), (18, 19), (19, 20)
+    ]
+    
+    total_length = 0
+    for start_idx, end_idx in hand_connections:
+        if start_idx < len(hand_landmarks) and end_idx < len(hand_landmarks):
+            segment_length = distance(hand_landmarks[start_idx], hand_landmarks[end_idx])
+            total_length += segment_length
+    
+    return total_length
+
+def calculate_proxy_z_from_segment_length(total_segment_length):
+    """
+    Calculate a proxy Z coordinate (distance from camera) based on total segment length.
+    Uses reciprocal relationship: larger segment length = closer to camera = higher Z value.
+    
+    Args:
+        total_segment_length: Sum of all hand segment lengths
+        
+    Returns:
+        Proxy Z coordinate using reciprocal formula
+    """
+    # Avoid division by zero
+    if total_segment_length <= 0:
+        return 500  # Return a default far distance
+    
+    # Calibration constant - adjust this based on your setup
+    # Higher K = higher Z values overall
+    # Based on observed range: 1400 (far) to 4000 (close) for segment lengths
+    K = 4200000  # Adjusted for better range mapping
+    
+    # Calculate reciprocal relationship: K * (1.0 / distance)
+    # Larger segment length (closer to camera) = higher Z value
+    proxy_z = K * (1.0 / total_segment_length)
+    
+    return proxy_z
+
+def calculate_hand_position(hand_landmarks, proxy_z=None):
+    """
+    Calculate the position of the hand using the wrist as the reference point.
+    
+    Args:
+        hand_landmarks: List of 21 hand landmarks [(x, y, z), ...]
+        proxy_z: Optional proxy Z distance to use instead of landmark z
+        
+    Returns:
+        tuple: (x, y, z) position of the hand (wrist position)
+    """
+    if not hand_landmarks or len(hand_landmarks) < 21:
+        return None
+    
+    # Use wrist landmark (index 0) as the hand position
+    wrist_x, wrist_y, wrist_z = hand_landmarks[0]
+    
+    # Use proxy Z if provided, otherwise use landmark z
+    if proxy_z is not None:
+        wrist_z = proxy_z
+    
+    return (wrist_x, wrist_y, wrist_z)
+
+def calculate_hand_center(hand_landmarks, proxy_z=None):
+    """
+    Calculate the center position of the hand based on palm landmarks.
+    
+    Args:
+        hand_landmarks: List of 21 hand landmarks [(x, y, z), ...]
+        proxy_z: Optional proxy Z distance to use instead of landmark z
+        
+    Returns:
+        tuple: (x, y, z) center position of the hand
+    """
+    if not hand_landmarks or len(hand_landmarks) < 21:
+        return None
+    
+    # Use palm landmarks (wrist + finger bases) to calculate center
+    palm_indices = [0, 1, 5, 9, 13, 17]  # wrist + finger bases
+    
+    center_x = sum(hand_landmarks[i][0] for i in palm_indices) / len(palm_indices)
+    center_y = sum(hand_landmarks[i][1] for i in palm_indices) / len(palm_indices)
+    center_z = sum(hand_landmarks[i][2] for i in palm_indices) / len(palm_indices)
+    
+    # Use proxy Z if provided, otherwise use calculated z
+    if proxy_z is not None:
+        center_z = proxy_z
+    
+    return (center_x, center_y, center_z)
+
+def calculate_hand_orientation(hand_landmarks):
+    """
+    Calculate the orientation of the hand in terms of yaw, pitch, and roll angles.
+    
+    Args:
+        hand_landmarks: List of 21 hand landmarks [(x, y, z), ...]
+        
+    Returns:
+        tuple: (yaw, pitch, roll) angles in radians
+    """
+    if not hand_landmarks or len(hand_landmarks) < 21:
+        return None
+    
+    # Key landmarks for orientation calculation
+    wrist = np.array(hand_landmarks[0])          # Wrist
+    middle_mcp = np.array(hand_landmarks[9])     # Middle finger MCP joint
+    index_mcp = np.array(hand_landmarks[5])      # Index finger MCP joint
+    pinky_mcp = np.array(hand_landmarks[17])     # Pinky MCP joint
+    
+    # Calculate vectors
+    palm_vector = middle_mcp - wrist  # Vector from wrist to middle finger base
+    side_vector = index_mcp - pinky_mcp  # Vector across the palm
+    
+    # Normalize vectors
+    palm_vector = palm_vector / np.linalg.norm(palm_vector)
+    side_vector = side_vector / np.linalg.norm(side_vector)
+    
+    # Calculate normal vector (perpendicular to palm)
+    normal_vector = np.cross(palm_vector, side_vector)
+    normal_vector = normal_vector / np.linalg.norm(normal_vector)
+    
+    # Calculate yaw (rotation around z-axis)
+    yaw = math.atan2(palm_vector[1], palm_vector[0])
+    
+    # Calculate pitch (rotation around y-axis)
+    pitch = math.asin(-palm_vector[2])
+    
+    # Calculate roll (rotation around x-axis)
+    roll = math.atan2(normal_vector[1], normal_vector[2])
+    
+    return (yaw, pitch, roll)
+
+def print_hand_data(landmarks_3d, frame_count=None, include_landmarks=False, send_robot_commands=False, landmark_filter='all'):
+    """
+    Print hand data to stdout in a consistent format across all modes.
+    
+    Args:
+        landmarks_3d: List of hand landmarks for each detected hand
+        frame_count: Optional frame number for camera mode
+        include_landmarks: Whether to print individual landmark coordinates
+        send_robot_commands: Whether to send commands to robot arms
+        landmark_filter: Either 'all' or comma-separated list of landmark indices to print
+    """
+    if not landmarks_3d:
+        if frame_count is not None:
+            print(f"Frame {frame_count}: no hands detected")
+        else:
+            print("No hands detected")
+        return
+    
+    # Sort hands for consistent ordering when there are 2 hands
+    if len(landmarks_3d) == 2:
+        if landmarks_3d[0][0][0] > landmarks_3d[1][0][0]:  # swap so left hand is always first
+            landmarks_3d = landmarks_3d[::-1]
+    
+    for i, hand_landmarks in enumerate(landmarks_3d):
+        # Print individual landmark coordinates if requested
+        if include_landmarks:
+            # Parse landmark filter
+            if landmark_filter.lower() == 'all':
+                landmarks_to_print = range(len(hand_landmarks))
+            elif landmark_filter.lower() == 'none':
+                landmarks_to_print = []
+            else:
+                try:
+                    landmarks_to_print = []
+                    for item in landmark_filter.split(','):
+                        item = item.strip()
+                        if '-' in item:
+                            # Handle range like "0-4"
+                            start, end = item.split('-', 1)
+                            start, end = int(start.strip()), int(end.strip())
+                            landmarks_to_print.extend(range(start, end + 1))
+                        else:
+                            # Handle single number
+                            landmarks_to_print.append(int(item))
+                except ValueError:
+                    print(f"Warning: Invalid landmark filter '{landmark_filter}', showing no landmarks")
+                    landmarks_to_print = []
+            
+            # Only print header if there are landmarks to show
+            if landmarks_to_print:
+                if frame_count is not None:
+                    print(f"Frame {frame_count} - Hand {i+1} landmarks:")
+                else:
+                    print(f"Hand {i+1} landmarks:")
+            
+            for j, (x, y, z) in enumerate(hand_landmarks):
+                if j in landmarks_to_print:
+                    print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
+        
+        print()  # Empty line between hands
+        
+        # Calculate and print distances - consistent format for all modes
+        thumb_first_dist = distance(hand_landmarks[4], hand_landmarks[8])
+        first_second_dist = distance(hand_landmarks[12], hand_landmarks[8])
+        total_segment_length = calculate_hand_segment_length_sum(hand_landmarks)
+        
+        # print("DIST:", thumb_first_dist)
+        # print("thumb-first:", thumb_first_dist)
+        # print("first-second:", first_second_dist)
+        print("TOTAL_SEGMENT_LENGTH:", total_segment_length)
+        
+        # Calculate and print proxy Z coordinate (distance from camera)
+        proxy_z = calculate_proxy_z_from_segment_length(total_segment_length)
+        print("PROXY_Z_DISTANCE:", proxy_z)
+        
+        # Calculate and print hand position
+        hand_position = calculate_hand_position(hand_landmarks, proxy_z)
+        if hand_position:
+            print(f"HAND_POSITION (wrist): ({hand_position[0]:.2f}, {hand_position[1]:.2f}, {hand_position[2]:.2f})")
+        
+        # Calculate and print hand center
+        hand_center = calculate_hand_center(hand_landmarks, proxy_z)
+        if hand_center:
+            print(f"HAND_CENTER (palm): ({hand_center[0]:.2f}, {hand_center[1]:.2f}, {hand_center[2]:.2f})")
+        
+        # Calculate and print hand orientation
+        orientation = calculate_hand_orientation(hand_landmarks)
+        if orientation:
+            yaw, pitch, roll = orientation
+            # Convert radians to degrees for easier reading
+            yaw_deg = math.degrees(yaw)
+            pitch_deg = math.degrees(pitch)
+            roll_deg = math.degrees(roll)
+            print(f"HAND_ORIENTATION (yaw, pitch, roll): ({yaw_deg:.1f}°, {pitch_deg:.1f}°, {roll_deg:.1f}°)")
+            print(f"HAND_ORIENTATION (radians): ({yaw:.3f}, {pitch:.3f}, {roll:.3f})")
+        
+        # Robot control logic
+        if send_robot_commands:
+            grip = max(0, 12-int(thumb_first_dist/8))
+            arm = i+1
+            print("ARM", arm, "GRIP", grip)
+            cmd = f'curl "http://localhost:8745/v1/arm{arm}/joints/set?j7={grip}"'
+            print(cmd)
+            os.system(cmd)
+        
+        # Add separator between hands (except for the last hand)
+        if i < len(landmarks_3d) - 1:
+            print("~" * 40)
+
 def apply_local_rotation(point_3d, center_3d, angle_y, angle_x):
     """Apply rotation around local center of the landmark set."""
     x, y, z = point_3d
@@ -104,13 +357,6 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 24)
     
-    # Debug: Print landmark data
-    print(f"Debug: Received {len(landmarks_3d_list)} hands")
-    for i, hand in enumerate(landmarks_3d_list):
-        print(f"Hand {i}: {len(hand)} landmarks")
-        if hand:
-            print(f"  First landmark: {hand[0]}")
-            print(f"  Last landmark: {hand[-1]}")
     
     # Prepare landmarks for 3D visualization with proper 2D alignment
     # We need to transform the landmarks so they appear in the right 2D positions initially
@@ -145,7 +391,6 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
         
         aligned_landmarks.append(aligned_hand)
     
-    print(f"Debug: Aligned first landmark: {aligned_landmarks[0][0] if aligned_landmarks else 'None'}")
     
     # Calculate bounding box center of all landmarks for local rotation
     landmark_center = [0, 0, 0]
@@ -163,7 +408,6 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
         landmark_center[1] /= total_landmarks
         landmark_center[2] /= total_landmarks
     
-    print(f"Debug: Landmark center: {landmark_center}")
     
     # Prepare background image if provided
     background_surface = None
@@ -313,9 +557,6 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
                 x2d, y2d, z_depth = project_3d_to_2d(rotated_landmark, camera_pos, screen_width, screen_height)
                 projected_landmarks.append((x2d, y2d, z_depth))
                 
-                # Debug: Print first few projections
-                # if hand_idx == 0 and i < 3:
-                #     print(f"Debug: Landmark {i}: 3D{landmark} -> Rotated{rotated_landmark} -> 2D({x2d}, {y2d}, {z_depth})")
             
             # Draw connections (cylinders)
             for start_idx, end_idx in hand_connections:
@@ -472,7 +713,7 @@ def detect_hand_landmarks_from_file(image_path, save_visualization=False, output
     landmarks_3d, _ = detect_hand_landmarks_from_image(rgb_image, save_visualization, output_path)
     return landmarks_3d
 
-def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, output_dir="."):
+def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, output_dir=".", send_robot_commands=False, landmark_filter='all'):
     """
     Periodically capture frames from a camera and detect hand landmarks.
     Display results in a Pygame window.
@@ -482,6 +723,8 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
         camera_id (int): Camera device ID
         save_visualization (bool): Whether to save visualizations of the landmarks
         output_dir (str): Directory to save visualizations
+        send_robot_commands (bool): Whether to send commands to robot arms
+        landmark_filter (str): Either 'all' or comma-separated list of landmark indices to print
         
     Returns:
         None
@@ -537,6 +780,7 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
             # Check if it's time to process a new frame
             current_time = time.time()
             if current_time - last_capture_time >= period:
+                print ("=" * 44)
                 # Convert to RGB for processing
                 rgb_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB)
                 
@@ -551,24 +795,7 @@ def process_camera_feed(period=4.0, camera_id=0, save_visualization=False, outpu
                     rgb_frame, save_visualization, output_path)
                 
                 # Print landmark information
-                if len(landmarks_3d) == 2:
-                    if landmarks_3d[0][0][0] > landmarks_3d[1][0][0]:                   #swap so left hand is always arm1 (order is random)
-                        landmarks_3d.reverse()
-                    for i, hand_landmarks in enumerate(landmarks_3d):
-                        print(f"Frame {frame_count} - Hand {i+1} landmarks:")
-                        # for j, (x, y, z) in enumerate(hand_landmarks):
-                        #     print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
-                        print()  # Empty line between hands
-                        d = distance(hand_landmarks[4], hand_landmarks[8])
-                        print ("DIST:", d)
-                        grip = max(0, 12-int(d/8))
-                        arm = i+1
-                        print ("ARM", arm, "GRIP", grip)
-                        cmd = f'curl "http://localhost:8745/v1/arm{arm}/joints/set?j7={grip}"'
-                        print (cmd)
-                        os.system(cmd)
-                else:
-                    print(f"Frame {frame_count}: did not see 2 hands")
+                print_hand_data(landmarks_3d, frame_count=frame_count, include_landmarks=True, send_robot_commands=send_robot_commands, landmark_filter=landmark_filter)
                 
                 # Update timing and frame count
                 last_capture_time = current_time
@@ -622,6 +849,9 @@ def main():
     parser.add_argument('--output', '-o', type=str, default='hand_landmarks.jpg', 
                        help='Path to save visualization for image mode or directory for camera mode')
     parser.add_argument('--3d', action='store_true', help='Launch 3D visualization window with spheres and cylinders')
+    parser.add_argument('--robot', action='store_true', help='Enable robot arm control commands')
+    parser.add_argument('--landmarks', type=str, default='none', 
+                       help='Comma-separated list of landmark indices to print, supports ranges like 0-4 (default: none)')
     
     args = parser.parse_args()
     
@@ -636,25 +866,22 @@ def main():
             
             # Launch 3D visualization if requested
             if getattr(args, '3d', False):
+                # Print hand data to stdout including landmark coordinates
+                print_hand_data(landmarks_3d, include_landmarks=True, landmark_filter=args.landmarks)
+                
                 # Load the original image for background
                 background_image = cv2.imread(args.image)
                 visualize_3d_landmarks(landmarks_3d, background_image=background_image)
             else:
                 # Print the 3D landmarks for each detected hand
-                for i, hand_landmarks in enumerate(landmarks_3d):
-                    print(f"Hand {i+1} landmarks:")
-                    for j, (x, y, z) in enumerate(hand_landmarks):
-                        print(f"  Landmark {j}: ({x:.2f}, {y:.2f}, {z:.2f})")
-                    print()  # Empty line between hands
-                    print ("thumb-first:", distance(hand_landmarks[4], hand_landmarks[8]))
-                    print ("first-second:", distance(hand_landmarks[12], hand_landmarks[8]))
+                print_hand_data(landmarks_3d, include_landmarks=True, landmark_filter=args.landmarks)
         
         elif args.camera:
             # Process camera feed
             if getattr(args, '3d', False):
                 print("3D visualization is only supported for image files, not camera feed.")
                 return
-            process_camera_feed(args.period, args.camera_id, args.visualize, args.output)
+            process_camera_feed(args.period, args.camera_id, args.visualize, args.output, args.robot, args.landmarks)
     
     except Exception as e:
         print(f"Error: {e}")
