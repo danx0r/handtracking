@@ -186,7 +186,7 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
         background_surface.set_alpha(128)  # 50% transparent
     
     # Camera controls - start with proper zoom for 2D alignment
-    camera_pos = [0, 0, -1000]  # Start even further back for proper scale
+    camera_pos = [0, 0, -1150]  # Start even further back for proper scale
     camera_angle_y = 0  # Rotation around Y axis (vertical, up-down)
     camera_angle_x = 0  # Rotation around X axis (horizontal, left-right)
     left_mouse_dragging = False
@@ -314,8 +314,8 @@ def visualize_3d_landmarks(landmarks_3d_list, screen_width=1200, screen_height=8
                 projected_landmarks.append((x2d, y2d, z_depth))
                 
                 # Debug: Print first few projections
-                if hand_idx == 0 and i < 3:
-                    print(f"Debug: Landmark {i}: 3D{landmark} -> Rotated{rotated_landmark} -> 2D({x2d}, {y2d}, {z_depth})")
+                # if hand_idx == 0 and i < 3:
+                #     print(f"Debug: Landmark {i}: 3D{landmark} -> Rotated{rotated_landmark} -> 2D({x2d}, {y2d}, {z_depth})")
             
             # Draw connections (cylinders)
             for start_idx, end_idx in hand_connections:
